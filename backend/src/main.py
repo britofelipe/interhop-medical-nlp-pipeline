@@ -4,10 +4,11 @@ import uuid
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from src.database import engine, get_db
+from src.database import engine, get_db, SessionLocal
 from src import models, schemas, crud
 from fastapi import BackgroundTasks
 from src.modules.generator.service import PrescriptionGenerator
+from src.modules.vision.service import OCRService
 
 # Create the database tables automatically on startup
 models.Base.metadata.create_all(bind=engine)
@@ -129,3 +130,59 @@ def generate_synthetic_data(
         "source": "MIMIC CSV" if csv_path else "Internal Mock Data",
         "output_directory": SYNTHETIC_DIR
     }
+
+# OCR PROCESSING ENDPOINT
+ocr_service = OCRService()
+
+@app.post("/documents/{document_id}/process")
+def process_document(
+    document_id: str, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Triggers the OCR pipeline for a specific document.
+    """
+    # 1. Get document info from DB
+    db_doc = crud.get_document(db, document_id)
+    if not db_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 2. Update status to PROCESSING
+    db_doc.status = models.ProcessingStatus.PROCESSING
+    db.commit()
+
+    # 3. Define the heavy task
+    def run_ocr_task(doc_id, file_path):
+        # Re-open session inside background task is safer in some contexts, 
+        # but here we reuse the logic via a new dependency if strictly needed.
+        # For simplicity, we'll use a new session here manually if needed, 
+        # but passing the logic directly is easier:
+        
+        try:
+            # RUN OCR
+            text_result = ocr_service.process_file(file_path)
+            
+            # SAVE RESULT (Need a new DB session for background thread)
+            new_db = SessionLocal()
+            try:
+                crud.update_document_text(new_db, doc_id, text_result)
+                print(f"OCR Complete for {doc_id}")
+            finally:
+                new_db.close() # Always close the session!
+            
+        except Exception as e:
+            print(f"OCR Failed: {e}")
+            # Ideally update DB status to FAILED here
+            
+    # 4. Launch in background
+    background_tasks.add_task(run_ocr_task, db_doc.id, db_doc.file_path)
+
+    return {"message": "Processing started", "status": "processing"}
+
+@app.get("/documents/{document_id}/text")
+def get_document_text(document_id: str, db: Session = Depends(get_db)):
+    doc = crud.get_document(db, document_id)
+    if not doc or not doc.prescription:
+        raise HTTPException(status_code=404, detail="Text not found yet")
+    return {"raw_text": doc.prescription.raw_text}
