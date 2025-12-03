@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # 1. Database Service
+  db:
+    image: postgres:15-alpine
+    container_name: interhop_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # Exposed for local debugging tools like DBeaver
+    networks:
+      - interhop_network
+
+  # 2. Backend Service (FastAPI)
+  backend:
+    build: ./backend
+    container_name: interhop_backend
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    volumes:
+      - ./backend/src:/app/src  # Hot-reloading: changes in code reflect immediately
+    ports:
+      - "8000:8000"
+    networks:
+      - interhop_network
+
+  # 3. Frontend Service (Streamlit)
+  frontend:
+    build: ./frontend
+    container_name: interhop_frontend
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src # Hot-reloading for frontend
+    ports:
+      - "8501:8501"
+    networks:
+      - interhop_network
+
+volumes:
+  postgres_data:
+
+networks:
+  interhop_network:
+    driver: bridge
