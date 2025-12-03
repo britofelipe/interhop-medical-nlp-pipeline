@@ -26,6 +26,7 @@ services:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     volumes:
       - ./backend/src:/app/src  # Hot-reloading: changes in code reflect immediately
+      - ./backend/uploads:/app/uploads
     ports:
       - "8000:8000"
     networks:
