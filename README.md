@@ -47,3 +47,29 @@ Once the containers are running:
 * **Frontend (Streamlit):** [http://localhost:8501](http://localhost:8501)
 * **Backend API Docs (Swagger UI):** [http://localhost:8000/docs](http://localhost:8000/docs)
 * **Database:** Port `5432` (accessible via external tools like DBeaver).
+
+## 🧪 Synthetic Data Generation (Dev / Testing)
+This project includes a module to generate synthetic medical prescriptions for testing the OCR pipeline.
+
+How to generate data:
+1. Open Swagger UI: Go to http://localhost:8000/docs.
+
+2. (Optional) Upload Source Data:
+
+- Find POST /admin/upload-mimic-csv.
+
+- Upload a CSV file containing MIMIC-III prescription data.
+
+- If skipped, the system uses internal mock data.
+
+3. Trigger Generation:
+
+- Find POST /admin/generate-synthetic-data.
+
+- Set count (e.g., 10) and execute.
+
+4. View Results:
+
+- The files are generated in the backend/uploads/synthetic folder.
+
+- Each image (.png) comes with a ground-truth JSON file (.json).

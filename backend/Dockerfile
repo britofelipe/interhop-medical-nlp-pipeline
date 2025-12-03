@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-fra \
     poppler-utils \
     libgl1 \
+    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

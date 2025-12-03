@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database import engine, get_db
 from src import models, schemas, crud
+from fastapi import BackgroundTasks
+from src.modules.generator.service import PrescriptionGenerator
 
 # Create the database tables automatically on startup
 models.Base.metadata.create_all(bind=engine)
@@ -64,3 +66,66 @@ def read_document(document_id: str, db: Session = Depends(get_db)):
     if db_doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return db_doc
+
+# SYNTHETIC PRESCRIPTION GENERATION
+
+# Define where synthetic data lives
+SYNTHETIC_DIR = "/app/uploads/synthetic"
+
+@app.post("/admin/generate-synthetic-data")
+def generate_synthetic_data(
+    count: int = 5, 
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Triggers the generation of synthetic prescriptions.
+    """
+    generator = PrescriptionGenerator(output_dir=SYNTHETIC_DIR)
+    
+    # Run generation in background so API doesn't freeze
+    background_tasks.add_task(generator.generate_batch, count=count)
+    
+    return {
+        "message": f"Started generating {count} synthetic documents.",
+        "output_directory": SYNTHETIC_DIR
+    }
+
+@app.get("/admin/synthetic-files")
+def list_synthetic_files():
+    """List generated files for verification"""
+    if not os.path.exists(SYNTHETIC_DIR):
+        return []
+    return os.listdir(SYNTHETIC_DIR)
+
+@app.post("/admin/upload-mimic-csv")
+def upload_mimic_csv(file: UploadFile = File(...)):
+    """
+    Upload the MIMIC Prescriptions CSV to be used for generation.
+    """
+    file_location = os.path.join(UPLOAD_DIR, "mimic_prescriptions.csv")
+    try:
+        with open(file_location, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"message": "CSV uploaded successfully", "path": file_location}
+
+@app.post("/admin/generate-synthetic-data")
+def generate_synthetic_data(
+    count: int = 5, 
+    background_tasks: BackgroundTasks = None
+):
+    # Check if the MIMIC CSV exists, otherwise use Mock data
+    csv_path = os.path.join(UPLOAD_DIR, "mimic_prescriptions.csv")
+    if not os.path.exists(csv_path):
+        csv_path = None # Triggers mock data fallback
+        
+    generator = PrescriptionGenerator(output_dir=SYNTHETIC_DIR)
+    background_tasks.add_task(generator.generate_batch, count=count, csv_path=csv_path)
+    
+    return {
+        "message": f"Generating {count} documents...",
+        "source": "MIMIC CSV" if csv_path else "Internal Mock Data",
+        "output_directory": SYNTHETIC_DIR
+    }
