@@ -20,11 +20,27 @@ def get_document(db: Session, document_id: uuid.UUID):
     return db.query(models.Document).filter(models.Document.id == document_id).first()
 
 # --- UPDATE (Machine) ---
-def update_document_text(db: Session, document_id: uuid.UUID, text: str):
+def update_prescription_structure(db: Session, document_id: uuid.UUID, data: dict):
     db_doc = get_document(db, document_id)
+    if db_doc and db_doc.prescription:
+        # Save to BOTH columns initially
+        db_doc.prescription.structured_json = data 
+        db_doc.prescription.ai_structured_json = data # <--- NEW: Save backup
+        db.commit()
+        return db_doc.prescription
+    return None
+
+def update_document_text(db: Session, document_id: uuid.UUID, text: str):
+    """Updates the document with OCR results and marks it as COMPLETED."""
+    db_doc = db.query(models.Document).filter(models.Document.id == document_id).first()
     if db_doc:
+        # Create or update the associated Prescription record
         if not db_doc.prescription:
-            db_presc = models.Prescription(document_id=db_doc.id, raw_text=text, structured_json={})
+            db_presc = models.Prescription(
+                document_id=db_doc.id, 
+                raw_text=text, 
+                structured_json={}
+            )
             db.add(db_presc)
         else:
             db_doc.prescription.raw_text = text
@@ -33,14 +49,6 @@ def update_document_text(db: Session, document_id: uuid.UUID, text: str):
         db.commit()
         db.refresh(db_doc)
     return db_doc
-
-def update_prescription_structure(db: Session, document_id: uuid.UUID, data: dict):
-    db_doc = get_document(db, document_id)
-    if db_doc and db_doc.prescription:
-        db_doc.prescription.structured_json = data 
-        db.commit()
-        return db_doc.prescription
-    return None
 
 # --- UPDATE (Human) ---
 def validate_prescription(db: Session, document_id: uuid.UUID, validated_json: dict):

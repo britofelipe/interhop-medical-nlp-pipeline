@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
+import os
 from api import check_health, upload_document, poll_status, get_results, validate_results
 from utils import convert_to_fhir
+import requests
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="InterHop - Analyse d'Ordonnances", layout="wide", page_icon="🏥")
@@ -106,7 +110,7 @@ elif page == "Validation":
                 "raw_instruction": st.column_config.TextColumn("Instructions"),
             }
 
-            edited_df = st.data_editor(meds_df, num_rows="dynamic", column_config=column_config, use_container_width=True)
+            edited_df = st.data_editor(meds_df, num_rows="dynamic", column_config=column_config, width='stretch')
 
             # 3. Action Buttons
             st.markdown("---")
@@ -145,9 +149,30 @@ elif page == "Validation":
 
 # --- PAGE: STATISTIQUES ---
 elif page == "Statistiques":
-    st.title("📊 Tableau de Bord")
-    st.info("Cette section affichera les métriques de performance (WER, Précision) calculées par le module de benchmark.")
-    
-    # Simple placeholder for now
-    st.metric(label="Documents Traités", value="12")
-    st.metric(label="Précision Moyenne (IA)", value="85.4%")
+    st.title("📊 Tableau de Bord de Performance")
+    st.markdown("Comparaison entre l'extraction **IA** et la validation **Humaine**.")
+
+    if st.button("🔄 Actualiser les données"):
+        st.rerun()
+
+    try:
+        resp = requests.get(f"{BACKEND_URL}/statistics/global")
+        if resp.status_code == 200:
+            stats = resp.json()
+            
+            if stats.get("count", 0) == 0:
+                st.warning("Pas assez de documents validés pour calculer les statistiques.")
+            else:
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Docs Validés", stats["count"])
+                col2.metric("Précision", f"{stats['avg_precision']*100:.1f}%")
+                col3.metric("Rappel", f"{stats['avg_recall']*100:.1f}%")
+                col4.metric("Score F1", f"{stats['avg_f1']*100:.1f}%")
+                
+                st.markdown("---")
+                st.success(f"L'IA a correctement identifié {stats['avg_recall']*100:.0f}% des médicaments finaux.")
+                
+        else:
+            st.error("Erreur lors de la récupération des statistiques.")
+    except Exception as e:
+        st.error(f"Erreur de connexion: {e}")

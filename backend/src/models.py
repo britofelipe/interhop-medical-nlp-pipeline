@@ -30,23 +30,23 @@ class Document(Base):
     # Relationship to the extraction result
     prescription = relationship("Prescription", back_populates="document", uselist=False)
 
+# ... imports ...
+
 class Prescription(Base):
     __tablename__ = "prescriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
-    # Foreign Key linking to the Document
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"))
     
-    # Full raw text extracted by OCR (Tesseract)
     raw_text = Column(Text, nullable=True)
     
-    # Structured data (Drugs, Dosages, etc.)
-    # JSONB is binary JSON - allows for high-performance querying inside the JSON
+    # NEW: Stores the original AI output (Read-Only for reference)
+    ai_structured_json = Column(JSONB, nullable=True)
+    
+    # Stores the Current/Final version (Editable)
     structured_json = Column(JSONB, nullable=True)
     
-    # Has a human doctor validated this?
     is_validated = Column(Boolean, default=False)
 
-    # Back relationship
     document = relationship("Document", back_populates="prescription")
+    
