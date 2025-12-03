@@ -9,6 +9,8 @@ from src import models, schemas, crud
 from fastapi import BackgroundTasks
 from src.modules.generator.service import PrescriptionGenerator
 from src.modules.vision.service import OCRService
+from src.modules.extraction.service import ExtractionService
+from src.benchmark import BenchmarkRunner
 
 # Create the database tables automatically on startup
 models.Base.metadata.create_all(bind=engine)
@@ -133,6 +135,7 @@ def generate_synthetic_data(
 
 # OCR PROCESSING ENDPOINT
 ocr_service = OCRService()
+extraction_service = ExtractionService()
 
 @app.post("/documents/{document_id}/process")
 def process_document(
@@ -154,26 +157,27 @@ def process_document(
 
     # 3. Define the heavy task
     def run_ocr_task(doc_id, file_path):
-        # Re-open session inside background task is safer in some contexts, 
-        # but here we reuse the logic via a new dependency if strictly needed.
-        # For simplicity, we'll use a new session here manually if needed, 
-        # but passing the logic directly is easier:
-        
         try:
-            # RUN OCR
+            # 1. RUN OCR
             text_result = ocr_service.process_file(file_path)
             
-            # SAVE RESULT (Need a new DB session for background thread)
+            # 2. RUN EXTRACTION
+            structured_data = extraction_service.extract_from_text(text_result)
+            
+            # 3. SAVE EVERYTHING
             new_db = SessionLocal()
             try:
+                # Save Raw Text
                 crud.update_document_text(new_db, doc_id, text_result)
-                print(f"OCR Complete for {doc_id}")
+                # Save Structured Data
+                crud.update_prescription_structure(new_db, doc_id, structured_data)
+                
+                print(f"Pipeline Complete for {doc_id}")
             finally:
-                new_db.close() # Always close the session!
-            
+                new_db.close()
+                
         except Exception as e:
-            print(f"OCR Failed: {e}")
-            # Ideally update DB status to FAILED here
+            print(f"Pipeline Failed: {e}")
             
     # 4. Launch in background
     background_tasks.add_task(run_ocr_task, db_doc.id, db_doc.file_path)
@@ -186,3 +190,19 @@ def get_document_text(document_id: str, db: Session = Depends(get_db)):
     if not doc or not doc.prescription:
         raise HTTPException(status_code=404, detail="Text not found yet")
     return {"raw_text": doc.prescription.raw_text}
+
+# BENCHMARKING ENDPOINT
+@app.post("/admin/run-benchmark")
+def run_benchmark_test(background_tasks: BackgroundTasks):
+    """
+    Runs the OCR pipeline against the generated synthetic data 
+    and calculates accuracy scores.
+    """
+    runner = BenchmarkRunner()
+    
+    # We run this directly (synchronously) if the dataset is small, 
+    # or use background_tasks for large sets. 
+    # For <50 images, synchronous is fine for immediate feedback.
+    result = runner.run_full_benchmark()
+    
+    return result

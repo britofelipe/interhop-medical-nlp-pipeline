@@ -40,3 +40,16 @@ def update_document_text(db: Session, document_id: uuid.UUID, text: str):
         db.commit()
         db.refresh(db_doc)
     return db_doc
+
+# EXTRACTION 
+def update_prescription_structure(db: Session, document_id: uuid.UUID, data: dict):
+    """Updates the prescription with structured JSON data."""
+    db_doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+    
+    if db_doc and db_doc.prescription:
+        # PostgreSQL JSONB handles python dicts automatically
+        db_doc.prescription.structured_json = data 
+        db.commit()
+        db.refresh(db_doc.prescription)
+        return db_doc.prescription
+    return None
