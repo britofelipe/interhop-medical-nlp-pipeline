@@ -27,7 +27,7 @@ if "selected_doc_id" not in st.session_state:
 # as we will fetch images from the backend on demand.
 
 # --- SIDEBAR ---
-st.sidebar.title("InterHop OCR")
+st.sidebar.title("ToobibOrdo")
 st.sidebar.info("Projet OpenSource pour la structuration de données de santé.")
 
 # Health Check Indicator
@@ -38,6 +38,8 @@ else:
 
 # Updated Navigation
 page = st.sidebar.radio("Navigation", ["Bibliothèque", "Validation", "Statistiques"])
+
+st.sidebar.markdown("---")
 
 # Helper function to switch tabs/pages
 def go_to_validation(doc_id):
@@ -71,13 +73,20 @@ if page == "Bibliothèque":
              st.rerun()
              
     # ZONE A: UPLOAD (Collapsible)
-    with st.expander("➕ Nouveau Document (Upload)", expanded=False):
-        st.write("Chargez une ordonnance pour démarrer l'extraction.")
-        uploaded_file = st.file_uploader("Choisir un fichier", type=["png", "jpg", "jpeg", "pdf"])
+    with st.expander("➕ Nouveau Document (Upload)", expanded=True):
+        st.write("Chargez une ou plusieurs ordonnances.")
+        uploaded_files = st.file_uploader(
+            "Choisir des fichiers", 
+            type=["png", "jpg", "jpeg", "pdf"], 
+            accept_multiple_files=True
+        )
         
-        if uploaded_file is not None:
-            if st.button("🚀 Envoyer et Traiter", type="primary"):
-                with st.spinner("Envoi et analyse initiale..."):
+        if uploaded_files:
+            if st.button("🚀 Envoyer Tout", type="primary"):
+                progress_bar = st.progress(0)
+                total = len(uploaded_files)
+                
+                for idx, uploaded_file in enumerate(uploaded_files):
                     try:
                         # 1. Upload
                         doc_info = upload_document(
@@ -85,15 +94,19 @@ if page == "Bibliothèque":
                             uploaded_file.name, 
                             uploaded_file.type
                         )
-                        st.toast(f"Document envoyé! Traitement en cours... (ID: {doc_info['id']})", icon="⏳")
-                        
-                        # 2. Store ID to track status (Optional polling could use this)
+                        # 2. Track last one for polling
                         st.session_state.last_uploaded_id = doc_info['id']
                         
-                        # 3. Optimistic Rerun (No sleep)
-                        st.rerun() 
+                        # Update progress
+                        progress_bar.progress((idx + 1) / total)
+                        time.sleep(0.1) # UI feel
+                        
                     except Exception as e:
-                        st.error(f"Erreur lors de l'envoi: {e}")
+                        st.error(f"Erreur avec {uploaded_file.name}: {e}")
+                
+                st.toast(f"{total} documents envoyés!", icon="🚀")
+                time.sleep(1) 
+                st.rerun()
 
     st.markdown("---")
 
