@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from src import models, schemas
 import uuid
 import datetime
+from sqlalchemy import desc
 
 # --- CREATE ---
 def create_document(db: Session, filename: str, file_path: str):
@@ -16,6 +17,19 @@ def create_document(db: Session, filename: str, file_path: str):
     return db_document
 
 # --- READ ---
+def get_documents(db: Session, validated: bool = None, limit: int = 100):
+    query = db.query(models.Document).outerjoin(models.Prescription)
+    
+    if validated is True:
+        query = query.filter(models.Prescription.is_validated == True)
+    elif validated is False:
+        query = query.filter(
+            (models.Prescription.is_validated == False) | 
+            (models.Prescription.is_validated == None)
+        )
+        
+    return query.order_by(desc(models.Document.upload_timestamp)).limit(limit).all()
+
 def get_document(db: Session, document_id: uuid.UUID):
     return db.query(models.Document).filter(models.Document.id == document_id).first()
 
@@ -68,3 +82,13 @@ def validate_prescription(db: Session, document_id: uuid.UUID, validated_json: d
         db.refresh(db_doc.prescription)
         return db_doc.prescription
     return None
+
+def update_document_status(db: Session, document_id: uuid.UUID, status: str, error_message: str = None):
+    db_doc = get_document(db, document_id)
+    if db_doc:
+        db_doc.status = status
+        if error_message:
+            print(f"Document {document_id} failed: {error_message}")
+        db.commit()
+        db.refresh(db_doc)
+    return db_doc

@@ -1,0 +1,12 @@
+
+# --- UPDATE (Status) ---
+def update_document_status(db: Session, document_id: uuid.UUID, status: str, error_message: str = None):
+    """Updates the document status. Error message is logged (DB schema update needed to store it)."""
+    db_doc = get_document(db, document_id)
+    if db_doc:
+        db_doc.status = status
+        if error_message:
+            print(f"Document {document_id} failed: {error_message}")
+        db.commit()
+        db.refresh(db_doc)
+    return db_doc

@@ -7,6 +7,7 @@ from src.database import get_db, SessionLocal
 from src import models, schemas, crud
 from src.modules.vision.service import OCRService
 from src.modules.extraction.service import ExtractionService
+from fastapi.responses import FileResponse
 
 router = APIRouter(
     prefix="/documents",
@@ -40,12 +41,12 @@ def process_document_task(doc_id: uuid.UUID, file_path: str):
         print(f"Processing complete for {doc_id}")
     except Exception as e:
         print(f"Error processing {doc_id}: {e}")
-        # Ideally set status to FAILED here
+        # Set status to FAILED
+        crud.update_document_status(db, doc_id, models.ProcessingStatus.FAILED, error_message=str(e))
     finally:
         db.close()
 
 # --- ENDPOINTS ---
-
 @router.post("/upload", response_model=schemas.DocumentResponse)
 def upload_document(
     background_tasks: BackgroundTasks,
@@ -77,6 +78,35 @@ def upload_document(
     background_tasks.add_task(process_document_task, doc.id, file_path)
 
     return doc
+
+@router.get("/", response_model=list[schemas.DocumentResponse])
+def list_documents(
+    validated: bool = None, # Query param: ?validated=true/false
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna a lista de documentos para a biblioteca.
+    """
+    return crud.get_documents(db, validated=validated)
+
+@router.get("/{document_id}/file")
+def get_document_file(document_id: str, db: Session = Depends(get_db)):
+    """
+    Retorna o arquivo físico (PDF/Imagem) para visualização.
+    """
+    db_doc = crud.get_document(db, document_id)
+    if not db_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not os.path.exists(db_doc.file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+    
+    # Determinar Media Type
+    media_type = "application/pdf" if db_doc.filename.endswith(".pdf") else "image/png"
+    if db_doc.filename.lower().endswith((".jpg", ".jpeg")):
+        media_type = "image/jpeg"
+
+    return FileResponse(db_doc.file_path, media_type=media_type, filename=db_doc.filename)
 
 @router.get("/{document_id}/status", response_model=schemas.DocumentResponse)
 def get_document_status(document_id: str, db: Session = Depends(get_db)):
